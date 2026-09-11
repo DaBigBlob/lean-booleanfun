@@ -28,7 +28,7 @@ namespace BooleanFun
 
 noncomputable section
 
-open Real intervalIntegral ProbabilityTheory Function Set Filter
+open Real intervalIntegral ProbabilityTheory Function Set Filter MeasureTheory
 open scoped Topology
 
 /-- The standard Gaussian density function -/
@@ -43,15 +43,12 @@ def Φ (t : ℝ) := ∫ s in Iio t, ϕ s
 -- set_option pp.notation false in
 /-- The range of the Gaussian CDF is the open interval `(0, 1)`. -/
 -- original: theorem Φ_range : range Φ = Ioo 0 1
-theorem Φ_range
-  : range Φ = Ioo 0 1
-  := by
+theorem Φ_range : range Φ = Ioo 0 1 := by
   apply Set.ext
   intro x
   change (∃ i : ℝ, Φ i = x) ↔ (0 < x ∧ x < 1)
   apply Iff.intro
-  .
-    intro hy
+  · intro hy
     cases hy with
     | intro w h =>
       rw [← h]
@@ -66,34 +63,33 @@ theorem Φ_range
       have intg_Iio_pos
         : 0 < ∫ (s : ℝ) in Iio w, ϕ s
         := by
-        refine (MeasureTheory.integral_pos_iff_support_of_nonneg ?_ ?_).mpr ?_
+        refine (integral_pos_iff_support_of_nonneg ?_ ?_).mpr ?_
         .
           change ∀ r : ℝ, 0 ≤ ϕ r
           unfold ϕ
           exact fun r ↦ gaussianPDFReal_nonneg 0 1 r
-        .
-          apply MeasureTheory.Integrable.restrict -- ai help: (how deal with "MeasureTheory.Integrable ϕ (ℙ.restrict (Iio w))")
+        . apply Integrable.restrict -- ai help: (how deal with "MeasureTheory.Integrable ϕ (ℙ.restrict (Iio w))")
           unfold ϕ
           exact integrable_gaussianPDFReal 0 1
         .
           rw [supp_eq_univ]
-          rw [MeasureTheory.Measure.restrict_apply_univ] -- https://leanprover-community.github.io/mathlib4_docs/Mathlib/MeasureTheory/Measure/Restrict.html#MeasureTheory.Measure.restrict_apply_univ
+          rw [Measure.restrict_apply_univ] -- https://leanprover-community.github.io/mathlib4_docs/Mathlib/MeasureTheory/Measure/Restrict.html#MeasureTheory.Measure.restrict_apply_univ
           simp only [volume_Iio, ENNReal.zero_lt_top]
       have intg_Ici_pos
           : 0 < ∫ s in Ici w, ϕ s
           := by
-          refine (MeasureTheory.integral_pos_iff_support_of_nonneg ?_ ?_).mpr ?_
+          refine (integral_pos_iff_support_of_nonneg ?_ ?_).mpr ?_
           . -- copied
             change ∀ r : ℝ, 0 ≤ ϕ r
             unfold ϕ
             exact fun r ↦ gaussianPDFReal_nonneg 0 1 r
           . -- copied
-            apply MeasureTheory.Integrable.restrict
+            apply Integrable.restrict
             unfold ϕ
             exact integrable_gaussianPDFReal 0 1
           . -- copied
             rw [supp_eq_univ]
-            rw [MeasureTheory.Measure.restrict_apply_univ]
+            rw [Measure.restrict_apply_univ]
             simp only [volume_Ici, ENNReal.zero_lt_top]
       apply And.intro
       .
@@ -202,10 +198,8 @@ theorem deriv_gaussianI (hx : x ∈ Ioo 0 1) : deriv 𝓘 x = -invFun Φ x := by
 
 /-- The Gaussian isoperimetric profile is positive on `(0, 1)`. -/
 -- original : theorem gaussianI_pos (hx : x ∈ Ioo 0 1) : 0 < 𝓘 x
-theorem gaussianI_pos
-  : {x : ℝ} -> (hx : x ∈ Ioo 0 1) -> 0 < 𝓘 x
-  := by
-  intro x hx ; unfold gaussianI
+theorem gaussianI_pos {x : ℝ} (hx : x ∈ Ioo 0 1) : 0 < 𝓘 x := by
+  unfold gaussianI
   rw [ite_eq_left hx]
   have l2
     : (lx : ℝ) → (0 < ϕ lx)
