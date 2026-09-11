@@ -39,9 +39,128 @@ def ϕ := gaussianPDFReal 0 1
  -/
 def Φ (t : ℝ) := ∫ s in Iio t, ϕ s
 
+
+-- set_option pp.notation false in
 /-- The range of the Gaussian CDF is the open interval `(0, 1)`. -/
-theorem Φ_range : range Φ = Ioo 0 1 := by
-  sorry
+-- original: theorem Φ_range : range Φ = Ioo 0 1
+theorem Φ_range
+  : range Φ = Ioo 0 1
+  := by
+  apply Set.ext
+  intro x
+  change (∃ i : ℝ, Φ i = x) ↔ (0 < x ∧ x < 1)
+  apply Iff.intro
+  .
+    intro hy
+    cases hy with
+    | intro w h =>
+      rw [← h]
+      have supp_eq_univ
+        : support ϕ = univ
+        := by
+        refine support_eq_univ ?_
+        intros i ; unfold ϕ
+        apply ne_of_gt -- most stuff in support seems to be <
+        refine gaussianPDFReal_pos 0 1 i ?_
+        norm_num
+      have intg_Iio_pos
+        : 0 < ∫ (s : ℝ) in Iio w, ϕ s
+        := by
+        refine (MeasureTheory.integral_pos_iff_support_of_nonneg ?_ ?_).mpr ?_
+        .
+          change ∀ r : ℝ, 0 ≤ ϕ r
+          unfold ϕ
+          exact fun r ↦ gaussianPDFReal_nonneg 0 1 r
+        .
+          apply MeasureTheory.Integrable.restrict -- ai help: (how deal with "MeasureTheory.Integrable ϕ (ℙ.restrict (Iio w))")
+          unfold ϕ
+          exact integrable_gaussianPDFReal 0 1
+        .
+          rw [supp_eq_univ]
+          rw [MeasureTheory.Measure.restrict_apply_univ] -- https://leanprover-community.github.io/mathlib4_docs/Mathlib/MeasureTheory/Measure/Restrict.html#MeasureTheory.Measure.restrict_apply_univ
+          simp only [volume_Iio, ENNReal.zero_lt_top]
+      have intg_Ici_pos
+          : 0 < ∫ s in Ici w, ϕ s
+          := by
+          refine (MeasureTheory.integral_pos_iff_support_of_nonneg ?_ ?_).mpr ?_
+          . -- copied
+            change ∀ r : ℝ, 0 ≤ ϕ r
+            unfold ϕ
+            exact fun r ↦ gaussianPDFReal_nonneg 0 1 r
+          . -- copied
+            apply MeasureTheory.Integrable.restrict
+            unfold ϕ
+            exact integrable_gaussianPDFReal 0 1
+          . -- copied
+            rw [supp_eq_univ]
+            rw [MeasureTheory.Measure.restrict_apply_univ]
+            simp only [volume_Ici, ENNReal.zero_lt_top]
+      apply And.intro
+      .
+        exact intg_Iio_pos
+      .
+        unfold Φ
+        have intg_Iii_eq_1
+          : ∫ s : ℝ, ϕ s = 1
+          := by
+          unfold ϕ
+          refine integral_gaussianPDFReal_eq_one 0 ?_
+          norm_num
+        have intg_split
+          : (∫ (s : ℝ) in Iio w, ϕ s) + (∫ (s : ℝ) in Ici w, ϕ s) = (∫ (s : ℝ), ϕ s)
+          := by
+          refine integral_Iio_add_Ici ?_ ?_
+          .
+            refine MeasureTheory.Integrable.integrableOn ?_
+            exact MeasureTheory.integrable_of_integral_eq_one intg_Iii_eq_1
+          .
+            refine MeasureTheory.Integrable.integrableOn ?_
+            exact MeasureTheory.integrable_of_integral_eq_one intg_Iii_eq_1
+        rw [intg_Iii_eq_1] at intg_split
+        rw [← intg_split]
+        exact lt_add_of_pos_right (∫ (s : ℝ) in Iio w, ϕ s) intg_Ici_pos
+  .
+    intro hy
+    cases hy with
+    | intro ge0 le1 =>
+      -- now: intermediate val
+      change x ∈ range Φ
+      refine mem_range_of_exists_le_of_exists_ge ?_ ?_ ?_
+      .
+        refine continuous_iff_continuousAt.mpr ?_
+        intro t
+        -- idea: contOn to contAt
+
+        have intgϕ
+          : MeasureTheory.IntegrableOn ϕ (Iio (t + 1))
+          := by
+          unfold ϕ
+          refine MeasureTheory.Integrable.integrableOn ?_
+          exact integrable_gaussianPDFReal 0 1
+
+        have contΦ
+          : ContinuousOn Φ (Iic (t + 1))
+          := by
+          unfold Φ
+          exact MeasureTheory.IntegrableOn.continuousOn_Iic_primitive_Iio intgϕ
+
+        apply contΦ.continuousAt
+        refine Iic_mem_nhds ?_
+        exact lt_add_one t
+      .
+        -- apply?
+        sorry
+      .
+        sorry
+
+
+set_option pp.notation false in
+#print Φ
+#print MeasureTheory.Integrable
+#check ProbabilityTheory.gaussianPDFReal_pos
+#print Function.support
+#check MeasureTheory.integral_add_compl
+#check integral_Iio_add_Ici
 
 /-- The Gaussian isoperimetric profile `I = ϕ ∘ Φ⁻¹`
 
@@ -55,12 +174,18 @@ def gaussianI (x : ℝ) := if x ∈ Ioo 0 1 then (ϕ ∘ invFun Φ) x else 0
 scoped notation "𝓘" => gaussianI
 
 @[simp]
-theorem gaussianI_zero : 𝓘 0 = 0 := by
-  sorry
+theorem gaussianI_zero
+  : 𝓘 0 = 0
+  := by
+  simp [gaussianI]
+  -- 0 is out of range (def)
 
 @[simp]
-theorem gaussianI_one : 𝓘 1 = 0 := by
-  sorry
+theorem gaussianI_one
+  : 𝓘 1 = 0
+  := by
+  simp [gaussianI]
+  -- 1 is out of range (def)
 
 -- In this section we compute derivatives of `I` on `(0, 1)`.
 section gaussianI_derivatives
@@ -76,8 +201,20 @@ theorem deriv_gaussianI (hx : x ∈ Ioo 0 1) : deriv 𝓘 x = -invFun Φ x := by
   sorry
 
 /-- The Gaussian isoperimetric profile is positive on `(0, 1)`. -/
-theorem gaussianI_pos (hx : x ∈ Ioo 0 1) : 0 < 𝓘 x := by
-  sorry
+-- original : theorem gaussianI_pos (hx : x ∈ Ioo 0 1) : 0 < 𝓘 x
+theorem gaussianI_pos
+  : {x : ℝ} -> (hx : x ∈ Ioo 0 1) -> 0 < 𝓘 x
+  := by
+  intro x hx ; unfold gaussianI
+  rw [ite_eq_left hx]
+  have l2
+    : (lx : ℝ) → (0 < ϕ lx)
+    := by
+    intro lx ; unfold ϕ
+    apply gaussianPDFReal_pos 0 1 lx
+    norm_num
+  change 0 < ϕ (invFun Φ x)
+  exact l2 (invFun Φ x)
 
 /-- The derivative of the Gaussian isoperimetric profile is also differentiable on `(0, 1)`. -/
 theorem hasDerivAt_deriv_gaussianI (hx : x ∈ Ioo 0 1) : HasDerivAt (deriv 𝓘) (-(𝓘 x)⁻¹) x := by
