@@ -8,6 +8,11 @@ import BooleanFun.Basic
 
 import Mathlib.MeasureTheory.Integral.IntervalIntegral.Basic
 import Mathlib.Probability.Distributions.Gaussian.Real
+import Mathlib.MeasureTheory.Integral.IntervalIntegral.FundThmCalculus
+import Mathlib.MeasureTheory.Integral.IntegralEqImproper
+import Mathlib.Analysis.Calculus.Deriv.Inverse
+import Mathlib.Analysis.Convex.Deriv
+import Mathlib.Tactic
 
 /-!
 
@@ -39,10 +44,114 @@ def ϕ := gaussianPDFReal 0 1
  -/
 def Φ (t : ℝ) := ∫ s in Iio t, ϕ s
 
+namespace Lemm
 
--- set_option pp.notation false in
+lemma ϕ_pos
+  : (t : ℝ) → 0 < ϕ t
+  := by
+  intro t
+  unfold ϕ
+  apply gaussianPDFReal_pos 0 1 t
+  norm_num
+
+lemma integrable_ϕ
+  : MeasureTheory.Integrable ϕ
+  := by
+  unfold ϕ
+  exact integrable_gaussianPDFReal 0 1
+
+lemma support_ϕ
+  : support ϕ = univ
+  := by
+  refine support_eq_univ ?_
+  intro i
+  exact ne_of_gt (ϕ_pos i)
+
+lemma integral_Iio_ϕ_pos
+  : (w : ℝ) → 0 < ∫ s in Iio w, ϕ s
+  := by
+  intro w
+  refine (MeasureTheory.integral_pos_iff_support_of_nonneg ?_ ?_).mpr ?_
+  .
+    change (r : ℝ) → 0 ≤ ϕ r
+    exact λ r ↦ le_of_lt (ϕ_pos r)
+  .
+    apply MeasureTheory.Integrable.restrict
+    exact integrable_ϕ
+  .
+    rw [support_ϕ]
+    rw [MeasureTheory.Measure.restrict_apply_univ]
+    simp only [volume_Iio, ENNReal.zero_lt_top]
+
+lemma integral_Ici_ϕ_pos
+  : (w : ℝ) → 0 < ∫ s in Ici w, ϕ s
+  := by
+  intro w
+  refine (MeasureTheory.integral_pos_iff_support_of_nonneg ?_ ?_).mpr ?_
+  .
+    change (r : ℝ) → 0 ≤ ϕ r
+    exact λ r ↦ le_of_lt (ϕ_pos r)
+  .
+    apply MeasureTheory.Integrable.restrict
+    exact integrable_ϕ
+  .
+    rw [support_ϕ]
+    rw [MeasureTheory.Measure.restrict_apply_univ]
+    simp only [volume_Ici, ENNReal.zero_lt_top]
+
+lemma integral_ϕ_eq_one
+  : ∫ s : ℝ, ϕ s = 1
+  := by
+  unfold ϕ
+  refine integral_gaussianPDFReal_eq_one 0 ?_
+  norm_num
+
+lemma continuous_Φ
+  : Continuous Φ
+  := by
+  refine continuous_iff_continuousAt.mpr ?_
+  intro t
+  have l_intgϕ
+    : MeasureTheory.IntegrableOn ϕ (Iio (t + 1))
+    := by
+    exact integrable_ϕ.integrableOn
+  have l_contΦ
+    : ContinuousOn Φ (Iic (t + 1))
+    := by
+    unfold Φ
+    exact MeasureTheory.IntegrableOn.continuousOn_Iic_primitive_Iio l_intgϕ
+  apply l_contΦ.continuousAt
+  refine Iic_mem_nhds ?_
+  exact lt_add_one t
+
+lemma tendsto_Φ_atBot
+  : Tendsto Φ atBot (𝓝 0)
+  := by
+  unfold Φ
+  exact MeasureTheory.tendsto_integral_Iio_zero fun ⦃U⦄ a ↦ a
+
+lemma tendsto_Φ_atTop
+  : Tendsto Φ atTop (𝓝 1)
+  := by
+  have l_complement
+    : Φ = λ t : ℝ => 1 - ∫ s in Ici t, ϕ s
+    := by
+    funext t
+    apply (eq_sub_iff_add_eq).mpr
+    unfold Φ
+    rw [← integral_ϕ_eq_one]
+    exact integral_Iio_add_Ici integrable_ϕ.integrableOn integrable_ϕ.integrableOn
+  have l_tail
+    : Tendsto (λ t : ℝ => ∫ s in Ici t, ϕ s) atTop (𝓝 0)
+    := by exact MeasureTheory.tendsto_integral_Ici_zero fun ⦃U⦄ a ↦ a
+  rw [l_complement]
+  have l_sub := l_tail.const_sub 1
+  rw [sub_zero] at l_sub
+  exact l_sub
+
+end Lemm
+
 /-- The range of the Gaussian CDF is the open interval `(0, 1)`. -/
--- original: theorem Φ_range : range Φ = Ioo 0 1
 theorem Φ_range
   : range Φ = Ioo 0 1
   := by
@@ -55,112 +164,215 @@ theorem Φ_range
     cases hy with
     | intro w h =>
       rw [← h]
-      have supp_eq_univ
-        : support ϕ = univ
-        := by
-        refine support_eq_univ ?_
-        intros i ; unfold ϕ
-        apply ne_of_gt -- most stuff in support seems to be <
-        refine gaussianPDFReal_pos 0 1 i ?_
-        norm_num
-      have intg_Iio_pos
-        : 0 < ∫ (s : ℝ) in Iio w, ϕ s
-        := by
-        refine (MeasureTheory.integral_pos_iff_support_of_nonneg ?_ ?_).mpr ?_
-        .
-          change ∀ r : ℝ, 0 ≤ ϕ r
-          unfold ϕ
-          exact fun r ↦ gaussianPDFReal_nonneg 0 1 r
-        .
-          apply MeasureTheory.Integrable.restrict -- ai help: (how deal with "MeasureTheory.Integrable ϕ (ℙ.restrict (Iio w))")
-          unfold ϕ
-          exact integrable_gaussianPDFReal 0 1
-        .
-          rw [supp_eq_univ]
-          rw [MeasureTheory.Measure.restrict_apply_univ] -- https://leanprover-community.github.io/mathlib4_docs/Mathlib/MeasureTheory/Measure/Restrict.html#MeasureTheory.Measure.restrict_apply_univ
-          simp only [volume_Iio, ENNReal.zero_lt_top]
-      have intg_Ici_pos
-          : 0 < ∫ s in Ici w, ϕ s
-          := by
-          refine (MeasureTheory.integral_pos_iff_support_of_nonneg ?_ ?_).mpr ?_
-          . -- copied
-            change ∀ r : ℝ, 0 ≤ ϕ r
-            unfold ϕ
-            exact fun r ↦ gaussianPDFReal_nonneg 0 1 r
-          . -- copied
-            apply MeasureTheory.Integrable.restrict
-            unfold ϕ
-            exact integrable_gaussianPDFReal 0 1
-          . -- copied
-            rw [supp_eq_univ]
-            rw [MeasureTheory.Measure.restrict_apply_univ]
-            simp only [volume_Ici, ENNReal.zero_lt_top]
       apply And.intro
       .
-        exact intg_Iio_pos
+        exact Lemm.integral_Iio_ϕ_pos w
       .
         unfold Φ
-        have intg_Iii_eq_1
-          : ∫ s : ℝ, ϕ s = 1
+        have l_intg_split
+          : (∫ (s : ℝ) in Iio w, ϕ s) + (∫ (s : ℝ) in Ici w, ϕ s) =
+              (∫ (s : ℝ), ϕ s)
           := by
-          unfold ϕ
-          refine integral_gaussianPDFReal_eq_one 0 ?_
-          norm_num
-        have intg_split
-          : (∫ (s : ℝ) in Iio w, ϕ s) + (∫ (s : ℝ) in Ici w, ϕ s) = (∫ (s : ℝ), ϕ s)
-          := by
-          refine integral_Iio_add_Ici ?_ ?_
-          .
-            refine MeasureTheory.Integrable.integrableOn ?_
-            exact MeasureTheory.integrable_of_integral_eq_one intg_Iii_eq_1
-          .
-            refine MeasureTheory.Integrable.integrableOn ?_
-            exact MeasureTheory.integrable_of_integral_eq_one intg_Iii_eq_1
-        rw [intg_Iii_eq_1] at intg_split
-        rw [← intg_split]
-        exact lt_add_of_pos_right (∫ (s : ℝ) in Iio w, ϕ s) intg_Ici_pos
+          exact integral_Iio_add_Ici
+            Lemm.integrable_ϕ.integrableOn
+            Lemm.integrable_ϕ.integrableOn
+        rw [Lemm.integral_ϕ_eq_one] at l_intg_split
+        rw [← l_intg_split]
+        exact lt_add_of_pos_right
+          (∫ (s : ℝ) in Iio w, ϕ s)
+          (Lemm.integral_Ici_ϕ_pos w)
   .
     intro hy
     cases hy with
-    | intro ge0 le1 =>
-      -- now: intermediate val
+    | intro g0 l1 =>
       change x ∈ range Φ
       refine mem_range_of_exists_le_of_exists_ge ?_ ?_ ?_
       .
-        refine continuous_iff_continuousAt.mpr ?_
-        intro t
-        -- idea: contOn to contAt
-
-        have intgϕ
-          : MeasureTheory.IntegrableOn ϕ (Iio (t + 1))
-          := by
-          unfold ϕ
-          refine MeasureTheory.Integrable.integrableOn ?_
-          exact integrable_gaussianPDFReal 0 1
-
-        have contΦ
-          : ContinuousOn Φ (Iic (t + 1))
-          := by
-          unfold Φ
-          exact MeasureTheory.IntegrableOn.continuousOn_Iic_primitive_Iio intgϕ
-
-        apply contΦ.continuousAt
-        refine Iic_mem_nhds ?_
-        exact lt_add_one t
+        exact Lemm.continuous_Φ
       .
-        -- apply?
-        sorry
+        obtain ⟨w, hw⟩ :=
+          (Lemm.tendsto_Φ_atBot.eventually_lt_const g0).exists
+        apply Exists.intro w
+        exact le_of_lt hw
       .
-        sorry
+        -- https://leanprover-community.github.io/mathlib4_docs/Mathlib/Topology/Order/OrderClosed.html#Filter.Tendsto.eventually_const_lt (leansearch.net)
+        obtain ⟨w, hw⟩ :=
+          (Lemm.tendsto_Φ_atTop.eventually_const_lt l1).exists
+        apply Exists.intro w
+        exact le_of_lt hw
 
+namespace Lemm
 
-set_option pp.notation false in
-#print Φ
-#print MeasureTheory.Integrable
-#check ProbabilityTheory.gaussianPDFReal_pos
-#print Function.support
-#check MeasureTheory.integral_add_compl
-#check integral_Iio_add_Ici
+lemma ϕ_eq
+  : (t : ℝ) → ϕ t = (1 / √(2 * π)) * exp (-(t ^ 2) / 2)
+  := by
+  intro t
+  unfold ϕ
+  rw [ProbabilityTheory.gaussianPDFReal_def] -- leansearch.net
+  simp [mul_one, sub_zero, one_div]
+
+lemma hasDerivAt_ϕ
+  : (t : ℝ) → HasDerivAt ϕ (-t * ϕ t) t
+  := by
+  intro t
+  have l_sq
+    : HasDerivAt (λ u : ℝ => u ^ 2) (2 * t) t
+    := by
+    simpa only [id_eq, Nat.cast_ofNat, Nat.reduceSub, pow_one, mul_one]
+      using (hasDerivAt_id t).fun_pow 2
+  have l_expo
+    : HasDerivAt (λ u : ℝ => -(u ^ 2) / 2) (-t) t
+    := by
+    have l_quot := l_sq.neg.div_const 2
+    have l_quot_val
+      : -(2 * t) / 2 = -t
+      := by
+      ring
+    rw [l_quot_val] at l_quot
+    exact l_quot
+  have l_exp
+    : HasDerivAt
+        (λ u : ℝ => exp (-(u ^ 2) / 2))
+        (exp (-(t ^ 2) / 2) * (-t))
+        t
+    := by
+    exact l_expo.exp
+  have l_prod := l_exp.const_mul (1 / √(2 * π))
+  have l_lam
+    : ϕ = λ u : ℝ => (1 / √(2 * π)) * exp (-(u ^ 2) / 2)
+    := by
+    funext u
+    exact ϕ_eq u
+  rw [← l_lam] at l_prod
+  have l_product_value
+    : (1 / √(2 * π)) * (exp (-(t ^ 2) / 2) * (-t)) = -t * ϕ t
+    := by
+    rw [ϕ_eq]
+    ring
+  rw [l_product_value] at l_prod
+  exact l_prod
+
+lemma continuous_ϕ
+  : Continuous ϕ
+  := by
+  apply continuous_iff_continuousAt.mpr
+  intro t
+  exact (hasDerivAt_ϕ t).continuousAt
+
+lemma hasDerivAt_Φ
+  : (t : ℝ) → HasDerivAt Φ (ϕ t) t
+  := by
+  intro t
+  have l_primitive
+    : Φ = λ u : ℝ => (∫ s in 0..u, ϕ s) + Φ 0
+    := by
+    funext u
+    apply (sub_eq_iff_eq_add).mp
+    unfold Φ
+    rw [
+      ← MeasureTheory.integral_Iic_eq_integral_Iio,
+      ← MeasureTheory.integral_Iic_eq_integral_Iio
+    ]
+    exact integral_Iic_sub_Iic integrable_ϕ.integrableOn integrable_ϕ.integrableOn
+  have l_deriv
+    : HasDerivAt (λ u : ℝ => ∫ s in 0..u, ϕ s) (ϕ t) t
+    := by
+    apply integral_hasDerivAt_right
+    .
+      exact integrable_ϕ.intervalIntegrable
+    .
+      exact continuous_ϕ.stronglyMeasurable.stronglyMeasurableAtFilter
+    .
+      exact continuous_ϕ.continuousAt
+
+  rw [l_primitive]
+  exact HasDerivAt.add_const (Φ 0) l_deriv
+
+lemma strictMono_Φ
+  : StrictMono Φ
+  := by
+  apply strictMono_of_hasDerivAt_pos hasDerivAt_Φ -- leansearch
+  intro t
+  exact ϕ_pos t
+
+lemma Φ_mem_Ioo
+  : (t : ℝ) → Φ t ∈ Ioo 0 1
+  := by
+  intro t
+  rw [← Φ_range]
+  exact mem_range_self t
+
+lemma Φ_invFun_id
+  : {x : ℝ} → x ∈ Ioo 0 1 → Φ (invFun Φ x) = x
+  := by
+  intro x hx
+  apply invFun_eq
+  change x ∈ range Φ
+  rw [Φ_range]
+  exact hx
+
+lemma continuousAt_invFun_Φ
+  : {x : ℝ} → x ∈ Ioo 0 1 → ContinuousAt (invFun Φ) x
+  := by
+  intro x hx
+  apply tendsto_order.mpr
+  apply And.intro
+  .
+    intro a ha
+    have l_ax
+      : Φ a < x
+      := by
+      rw [← Φ_invFun_id hx]
+      exact strictMono_Φ ha
+    have l_in
+      : ∀ᶠ y in 𝓝 x, y ∈ Ioo 0 1
+      := Ioo_mem_nhds hx.1 hx.2
+    have l_above
+      : ∀ᶠ y in 𝓝 x, Φ a < y
+      := eventually_gt_nhds l_ax
+    filter_upwards [l_in, l_above]
+    intro y hy hay
+    apply strictMono_Φ.lt_iff_lt.mp
+    rw [Φ_invFun_id hy]
+    exact hay
+  .
+    intro b hb
+    have l_xb
+      : x < Φ b
+      := by
+      rw [← Φ_invFun_id hx]
+      exact strictMono_Φ hb
+    have l_in
+      : ∀ᶠ y in 𝓝 x, y ∈ Ioo 0 1
+      := Ioo_mem_nhds hx.1 hx.2
+    have l_below
+      : ∀ᶠ y in 𝓝 x, y < Φ b
+      := eventually_lt_nhds l_xb
+    filter_upwards [l_in, l_below] with y hy hyb
+    apply strictMono_Φ.lt_iff_lt.mp
+    rw [Φ_invFun_id hy]
+    exact hyb
+
+lemma hasDerivAt_invFun_Φ
+  : {x : ℝ} → x ∈ Ioo 0 1 →
+      HasDerivAt (invFun Φ) (ϕ (invFun Φ x))⁻¹ x
+  := by
+  intro x hx
+  apply HasDerivAt.of_local_left_inverse
+  .
+    exact continuousAt_invFun_Φ hx
+  .
+    exact hasDerivAt_Φ (invFun Φ x)
+  .
+    exact ne_of_gt (ϕ_pos (invFun Φ x))
+  .
+    have l_in
+      : ∀ᶠ y in 𝓝 x, y ∈ Ioo 0 1
+      := Ioo_mem_nhds hx.1 hx.2
+    filter_upwards [l_in] with y hy
+    exact Φ_invFun_id hy
+
+end Lemm
 
 /-- The Gaussian isoperimetric profile `I = ϕ ∘ Φ⁻¹`
 
@@ -187,63 +399,192 @@ theorem gaussianI_one
   simp [gaussianI]
   -- 1 is out of range (def)
 
+namespace Lemm
+
+lemma gaussianI_eq
+  : {x : ℝ} → x ∈ Ioo 0 1 → 𝓘 x = ϕ (invFun Φ x)
+  := by
+  intro x hx
+  unfold gaussianI
+  rw [ite_eq_left hx]
+  rfl
+
+end Lemm
+
 -- In this section we compute derivatives of `I` on `(0, 1)`.
 section gaussianI_derivatives
 
-variable {x : ℝ}
-
 /-- The Gaussian isoperimetric profile is differentiable on `(0, 1)` -/
-theorem hasDerivAt_gaussianI (hx : x ∈ Ioo 0 1) : HasDerivAt 𝓘 (-invFun Φ x) x := by
-  sorry
+-- original: theorem hasDerivAt_gaussianI (hx : x ∈ Ioo 0 1) : HasDerivAt 𝓘 (-invFun Φ x) x
+theorem hasDerivAt_gaussianI
+  : {x : ℝ} → x ∈ Ioo 0 1 → HasDerivAt 𝓘 (-invFun Φ x) x
+  := by
+  intro x hx
+  have l_comp
+    : HasDerivAt
+        (ϕ ∘ invFun Φ)
+        ((-invFun Φ x * ϕ (invFun Φ x)) * (ϕ (invFun Φ x))⁻¹)
+        x
+    := by
+    exact (Lemm.hasDerivAt_ϕ (invFun Φ x)).comp x (Lemm.hasDerivAt_invFun_Φ hx) -- leansearch.net
+  have l_nonzero
+    : ϕ (invFun Φ x) ≠ 0
+    := ne_of_gt (Lemm.ϕ_pos (invFun Φ x))
+  rw [mul_assoc, mul_inv_cancel₀ l_nonzero, mul_one] at l_comp -- ChatGPT help: mul_inv_cancel₀ (leansearch.net gave all useless results (that looked good))
+  -- cant do rw ite_left because gaussianI is λ bound
+  apply l_comp.congr_of_eventuallyEq
+  filter_upwards [isOpen_Ioo.mem_nhds hx]
+  intro y hy
+  unfold gaussianI
+  rw [ite_eq_left hy]
 
 /-- The Gaussian isoperimetric profile's derivative.  -/
-theorem deriv_gaussianI (hx : x ∈ Ioo 0 1) : deriv 𝓘 x = -invFun Φ x := by
-  sorry
+-- original: theorem deriv_gaussianI (hx : x ∈ Ioo 0 1) : deriv 𝓘 x = -invFun Φ x
+theorem deriv_gaussianI
+  : {x : ℝ} → x ∈ Ioo 0 1 → deriv 𝓘 x = -invFun Φ x
+  := by
+  intro x hx
+  exact (hasDerivAt_gaussianI hx).deriv
 
 /-- The Gaussian isoperimetric profile is positive on `(0, 1)`. -/
 -- original : theorem gaussianI_pos (hx : x ∈ Ioo 0 1) : 0 < 𝓘 x
 theorem gaussianI_pos
   : {x : ℝ} -> (hx : x ∈ Ioo 0 1) -> 0 < 𝓘 x
   := by
-  intro x hx ; unfold gaussianI
-  rw [ite_eq_left hx]
-  have l2
-    : (lx : ℝ) → (0 < ϕ lx)
-    := by
-    intro lx ; unfold ϕ
-    apply gaussianPDFReal_pos 0 1 lx
-    norm_num
-  change 0 < ϕ (invFun Φ x)
-  exact l2 (invFun Φ x)
+  intro x hx
+  rw [Lemm.gaussianI_eq hx]
+  exact Lemm.ϕ_pos (invFun Φ x)
 
 /-- The derivative of the Gaussian isoperimetric profile is also differentiable on `(0, 1)`. -/
-theorem hasDerivAt_deriv_gaussianI (hx : x ∈ Ioo 0 1) : HasDerivAt (deriv 𝓘) (-(𝓘 x)⁻¹) x := by
-  sorry
+-- original: theorem hasDerivAt_deriv_gaussianI (hx : x ∈ Ioo 0 1) : HasDerivAt (deriv 𝓘) (-(𝓘 x)⁻¹) x
+theorem hasDerivAt_deriv_gaussianI
+  : {x : ℝ} → x ∈ Ioo 0 1 →
+      HasDerivAt (deriv 𝓘) (-(𝓘 x)⁻¹) x
+  := by
+  intro x hx
+  have l_neg
+    : HasDerivAt
+        (λ y => -invFun Φ y)
+        (-(ϕ (invFun Φ x))⁻¹)
+        x
+    := by
+    exact (Lemm.hasDerivAt_invFun_Φ hx).neg
+  rw [← Lemm.gaussianI_eq hx] at l_neg
+  apply l_neg.congr_of_eventuallyEq
+  have l_in
+    : ∀ᶠ y in 𝓝 x, y ∈ Ioo 0 1
+    := Ioo_mem_nhds hx.1 hx.2
+  filter_upwards [l_in] with y hy
+  exact deriv_gaussianI hy
 
 /-- The second derivative of the Gaussian isoperimetric profile -/
-theorem deriv_deriv_gaussianI (hx : x ∈ Ioo 0 1) : deriv (deriv 𝓘) x = -(𝓘 x)⁻¹ := by
-  sorry
+-- original: theorem deriv_deriv_gaussianI (hx : x ∈ Ioo 0 1) : deriv (deriv 𝓘) x = -(𝓘 x)⁻¹
+theorem deriv_deriv_gaussianI
+  : {x : ℝ} → x ∈ Ioo 0 1 → deriv (deriv 𝓘) x = -(𝓘 x)⁻¹
+  := by
+  intro x hx
+  exact (hasDerivAt_deriv_gaussianI hx).deriv
 
 /-- The second derivative of the Gaussian isoperimetric profile is negative on `(0, 1)`. -/
-theorem deriv_deriv_gaussianI_neg (hx : x ∈ Ioo 0 1) : deriv (deriv 𝓘) x < 0 := by
-  sorry
+-- original: theorem deriv_deriv_gaussianI_neg (hx : x ∈ Ioo 0 1) : deriv (deriv 𝓘) x < 0
+theorem deriv_deriv_gaussianI_neg
+  : {x : ℝ} → x ∈ Ioo 0 1 → deriv (deriv 𝓘) x < 0
+  := by
+  intro x hx
+  rw [deriv_deriv_gaussianI hx]
+  apply neg_lt_zero.mpr
+  apply inv_pos.mpr
+  exact gaussianI_pos hx
+
+namespace Lemm
+
+lemma tendsto_invFun_Φ_zero
+  : Tendsto (invFun Φ) (𝓝[>] 0) atBot
+  := by
+  apply tendsto_atBot.mpr -- leansearch
+  -- idea: Φ is mono -> Φ (invFun Φ a) ≤ Φ b; a ∈ ioo 0 1 -> Φ (invFun Φ a) = a; so a ≤ Φ b
+  intro b
+  have l_in
+    : ∀ᶠ x : ℝ in 𝓝[>] 0, x ∈ Ioo 0 1
+    := Ioo_mem_nhdsGT zero_lt_one -- leansearch
+  have l_below
+    : ∀ᶠ x : ℝ in 𝓝[>] 0, x < Φ b
+    := by
+    apply Filter.Eventually.filter_mono nhdsWithin_le_nhds
+    exact eventually_lt_nhds (Φ_mem_Ioo b).1
+  filter_upwards [l_in, l_below]
+  intro x hx hxb
+  apply strictMono_Φ.le_iff_le.mp
+  rw [Φ_invFun_id hx]
+  exact le_of_lt hxb
+
+lemma tendsto_invFun_Φ_one
+  : Tendsto (invFun Φ) (𝓝[<] 1) atTop
+  := by
+  -- same ideea
+  apply tendsto_atTop.mpr
+  intro b
+  have l_in
+    : ∀ᶠ x : ℝ in 𝓝[<] 1, x ∈ Ioo 0 1
+    := Ioo_mem_nhdsLT zero_lt_one
+  have l_above
+    : ∀ᶠ x : ℝ in 𝓝[<] 1, Φ b < x
+    := by
+    apply Filter.Eventually.filter_mono nhdsWithin_le_nhds
+    exact eventually_gt_nhds (Φ_mem_Ioo b).2
+  filter_upwards [l_in, l_above] with x hx hbx
+  apply strictMono_Φ.le_iff_le.mp
+  rw [Φ_invFun_id hx]
+  exact le_of_lt hbx
+
+end Lemm
 
 /-- The Gaussian isoperimetric profile is strictly concave on `[0, 1]`. -/
-theorem strictConcaveOn_gaussianI : StrictConcaveOn ℝ (Icc 0 1) 𝓘 := by
+theorem strictConcaveOn_gaussianI
+  : StrictConcaveOn ℝ (Icc 0 1) 𝓘
+  := by
+  -- i will need to read more mathlib (and maybe revisit a textbook)
   sorry
 
 /-- Differential equation satisfied by the Gaussian isoperimetric profile. -/
-theorem gaussianI_mul_deriv_deriv_eq (hx : x ∈ Ioo 0 1) :
-    𝓘 x * deriv (deriv 𝓘) x = -1 := by
-  sorry
+-- original: theorem gaussianI_mul_deriv_deriv_eq (hx : x ∈ Ioo 0 1) : 𝓘 x * deriv (deriv 𝓘) x = -1
+theorem gaussianI_mul_deriv_deriv_eq
+  : {x : ℝ} → x ∈ Ioo 0 1 → 𝓘 x * deriv (deriv 𝓘) x = -1
+  := by
+  intro x hx
+  rw [deriv_deriv_gaussianI hx]
+  rw [mul_neg, mul_inv_cancel₀ (ne_of_gt (gaussianI_pos hx))]
 
 /-- The limit of `I' x` tends to `∞` as `x → 0+`. -/
-theorem tendsto_deriv_gaussianI_zero : Tendsto (deriv 𝓘) (𝓝[>] 0) atTop := by
-  sorry
+theorem tendsto_deriv_gaussianI_zero
+  : Tendsto (deriv 𝓘) (𝓝[>] 0) atTop
+  := by
+  have l_neg
+    : Tendsto (λ x => -invFun Φ x) (𝓝[>] 0) atTop
+    := by
+    exact tendsto_neg_atBot_atTop.comp Lemm.tendsto_invFun_Φ_zero
+  apply l_neg.congr'
+  have l_in
+    : ∀ᶠ x : ℝ in 𝓝[>] 0, x ∈ Ioo 0 1
+    := Ioo_mem_nhdsGT zero_lt_one
+  filter_upwards [l_in] with x hx
+  exact (deriv_gaussianI hx).symm
 
 /-- The limit of `I' x` tends to `-∞` as `x → 1-`. -/
-theorem tendsto_deriv_gaussianI_one : Tendsto (deriv 𝓘) (𝓝[<] 1) atBot := by
-  sorry
+theorem tendsto_deriv_gaussianI_one
+  : Tendsto (deriv 𝓘) (𝓝[<] 1) atBot
+  := by
+  -- same
+  have l_neg
+    : Tendsto (λ x => -invFun Φ x) (𝓝[<] 1) atBot
+    := by
+    exact tendsto_neg_atTop_atBot.comp Lemm.tendsto_invFun_Φ_one
+  apply l_neg.congr'
+  have l_in
+    : ∀ᶠ x : ℝ in 𝓝[<] 1, x ∈ Ioo 0 1
+    := Ioo_mem_nhdsLT zero_lt_one
+  filter_upwards [l_in] with x hx
+  exact (deriv_gaussianI hx).symm
 
 end gaussianI_derivatives
 
@@ -263,8 +604,14 @@ section twopoint_inequality
 -- theorem bobkov_two_point_of_mul_deriv_deriv_eq_neg
 
 /-- Bobkov's classical two-point inequality for the Gaussian isoperimetric profile. -/
-theorem bobkov_two_point {a b : ℝ} (ha : a ∈ Icc 0 1) (hb : b ∈ Icc 0 1) :
-    2 * 𝓘 ((a + b) / 2) ≤ √((𝓘 a) ^ 2 + ((a - b) / 2) ^ 2) + √((𝓘 b) ^ 2 + ((a - b) / 2) ^ 2) := by
+theorem bobkov_two_point
+  {a b : ℝ}
+  (ha : a ∈ Icc 0 1)
+  (hb : b ∈ Icc 0 1)
+  : 2 * 𝓘 ((a + b) / 2) ≤
+      √((𝓘 a) ^ 2 + ((a - b) / 2) ^ 2) +
+      √((𝓘 b) ^ 2 + ((a - b) / 2) ^ 2)
+  := by
   sorry
 
 end twopoint_inequality
