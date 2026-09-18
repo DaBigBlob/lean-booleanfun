@@ -33,7 +33,7 @@ namespace BooleanFun
 
 noncomputable section
 
-open Real intervalIntegral ProbabilityTheory Function Set Filter
+open Real intervalIntegral ProbabilityTheory Function Set Filter MeasureTheory
 open scoped Topology
 
 /-- The standard Gaussian density function -/
@@ -159,8 +159,7 @@ theorem Φ_range
   intro x
   change (∃ i : ℝ, Φ i = x) ↔ (0 < x ∧ x < 1)
   apply Iff.intro
-  .
-    intro hy
+  · intro hy
     cases hy with
     | intro w h =>
       rw [← h]
